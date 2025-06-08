@@ -38,14 +38,3 @@ You may view the source code but may not redistribute, reuse, or modify it.
 
 Made by Link-the-Coder 💻
 
-
----
-
-To add it:
-
-```bash
-echo "[PASTE ABOVE HERE]" > README.md
-git add README.md
-git commit -m "Add README"
-git push
-```
