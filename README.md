@@ -12,6 +12,9 @@
 - Linux (tested on Arch)
 - Rust (1.87+)
 
+## Information
+When closing, it may say app unresponding but you can ignor that, just click terminate.
+
 ## 📦 Installation
 
 ```bash
