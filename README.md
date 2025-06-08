@@ -7,6 +7,7 @@
 - Accurate WCA-style timing
 - Scramble generator
 - Session stats tracking (coming soon)
+- Bluetooth (coming soon)
 
 ## 🛠 Requirements
 - Linux (tested on Arch)
