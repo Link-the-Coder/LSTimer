@@ -24,6 +24,25 @@ cd LSTimer-Linux
 cargo run --release
 ```
 
+## Create Desktop Shortcut
+
+```bash
+nano ~/.local/share/applications/LSTimer.desktop
+```
+Add this to the .desktop file
+**Make sure to change yourname to your name**
+```INI
+[Desktop Entry]
+Name=LSTimer
+Comment=Launch LSTimer Rust App
+Exec=/home/yourname/LSTimer-Linux/target/release/LSTimer # Your path to the file
+Terminal=false
+Type=Application
+Categories=Utility;
+StartupNotify=true
+Icon=/home/yourname/LSTimer-Linux/icon.png
+```
+
 🧠 Usage
 
     Press Space to start/stop the timer
