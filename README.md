@@ -1,7 +1,7 @@
 # LSTimer-Linux
 
 # **Overview**
-![Timer Screenshot](screenshots/timer.png)
+![Timer Screenshot](screenshots/overview.png)
 
 **LSTimer** is a minimal and efficient Rubik's Cube timer for Linux, built in Rust.
 
