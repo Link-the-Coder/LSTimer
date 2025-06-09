@@ -29,8 +29,8 @@ cargo run --release
 ```bash
 nano ~/.local/share/applications/LSTimer.desktop
 ```
-Add this to the .desktop file
-**Make sure to change yourname to your name**
+Add this to the .desktop file.
+**Make sure to change yourname to your actual username!**
 ```INI
 [Desktop Entry]
 Name=LSTimer
