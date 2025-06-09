@@ -5,12 +5,12 @@
 ## 🚀 Features
 - Fast and responsive terminal-based interface
 - Accurate WCA-style timing
-- Scramble generator
+- Scramble generator for each event
 - Session stats tracking (coming soon)
 - Bluetooth (coming soon)
 
 ## 🛠 Requirements
-- Linux (tested on Arch)
+- Linux (tested on Arch with Wayland, KDE Plasma 6 and Hyprland)
 - Rust (1.87+)
 
 ## Information
@@ -47,9 +47,11 @@ Icon=/home/yourname/LSTimer-Linux/icon.png
 
     Press Space to start/stop the timer
 
-    Wait for the green light before starting
+    Wait for 2 seconds before releasing spacebar
 
     Automatically generates a scramble on each solve
+
+    Scramble changes for each event
 
 🔒 License
 
