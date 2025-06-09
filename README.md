@@ -45,14 +45,17 @@ cd LSTimer-Linux
 cargo run --release
 ```
 
-    💡 Tip: For faster startup, run the built binary directly:
-    ./target/release/LSTimer
-
+💡 Tip: For faster startup, run the built binary directly:
+```bash
+./target/release/LSTimer
+```
 🖥️ Create Desktop Shortcut (Optional)
 
-    Open the desktop entry file:
+Open the desktop entry file:
 
+```bash
 nano ~/.local/share/applications/LSTimer.desktop
+```
 
 Paste the following (⚠️ replace /home/yourname with your username):
 ```INI
@@ -66,7 +69,7 @@ Paste the following (⚠️ replace /home/yourname with your username):
     StartupNotify=true
     Icon=/home/yourname/LSTimer-Linux/icon.png
 ```
-    Save and close. It should now appear in your app launcher.
+Save and close. It should now appear in your app launcher.
 
 🧠 Usage
 ```
