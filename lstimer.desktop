@@ -1,0 +1,9 @@
+[Desktop Entry]
+Name=LSTimer
+Comment=Launch LSTimer Rust App
+Exec=/home/linkthecoder/rust/LSTimer/target/debug/LSTimer
+Terminal=false
+Type=Application
+Categories=Utility;
+StartupNotify=true
+Icon=/home/linkthecoder/rust/LSTimer/icon.png
