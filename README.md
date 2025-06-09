@@ -14,7 +14,7 @@
 - Rust (1.87+)
 
 ## Information
-When closing, it may say app unresponding but you can ignore that, just click terminate.
+**When closing, it may say app unresponding, ignore that, click terminate!!**
 
 ## 📦 Installation
 
