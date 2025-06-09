@@ -1,32 +1,41 @@
-# LSTimer-Linux
+# **LSTimer-Linux**
 
-# **Overview**
-![Timer Screenshot](screenshots/overview.png)
+A **minimal**, **accurate**, and **blazingly fast** Rubik's Cube timer for Linux — built with Rust.
 
-**LSTimer** is a minimal and efficient Rubik's Cube timer for Linux, built in Rust.
+![Overview](screenshots/overview.png)
+
+---
 
 ## 🚀 Features
-- Fast and responsive terminal-based interface
-- Accurate WCA-style timing
-- Scramble generator for each event
-- Session stats tracking (coming soon)
-- Bluetooth (coming soon)
 
-## 🛠 Requirements
-- Linux (tested on Arch with Wayland, KDE Plasma 6 and Hyprland)
-- Rust (1.87+)
+- ✅ WCA-style inspection and timing
+- 🎯 Scramble generator per event
+- 📊 Session stats
+- 🔗 Bluetooth timer support (coming soon)
+- ⚡ Lightweight & terminal-based
+- 🧠 Clean and intuitive UI
 
-# **Custom Settings**
-![Timer Screenshot](screenshots/settings.png)
+---
 
-# **Multiple events**
-![Timer Screenshot](screenshots/multiple-events.png)
+## 🖼️ Screenshots
 
-# **Detailed Stats**
-![Timer Screenshot](screenshots/detailed-stats.png)
+### 🔧 Settings Panel
+![Settings](screenshots/settings.png)
 
-## Information
-**When closing, it may say app unresponding, ignore that, click terminate!!**
+### 🧩 Multiple Events
+![Multiple Events](screenshots/multiple-events.png)
+
+### 📈 Detailed Stats
+![Stats](screenshots/detailed-stats.png)
+
+---
+
+## 🛠️ Requirements
+
+- 🐧 Linux (tested on Arch Linux + Wayland: Hyprland, KDE Plasma 6)
+- 🦀 Rust 1.87 or newer
+
+---
 
 ## 📦 Installation
 
@@ -36,39 +45,45 @@ cd LSTimer-Linux
 cargo run --release
 ```
 
-## Create Desktop Shortcut
+    💡 Tip: For faster startup, run the built binary directly:
+    ./target/release/LSTimer
 
-```bash
+🖥️ Create Desktop Shortcut (Optional)
+
+    Open the desktop entry file:
+
 nano ~/.local/share/applications/LSTimer.desktop
-```
-Add this to the .desktop file.
-**Make sure to change yourname to your actual username!**
+
+Paste the following (⚠️ replace /home/yourname with your username):
 ```INI
-[Desktop Entry]
-Name=LSTimer
-Comment=Launch LSTimer Rust App
-Exec=/home/yourname/LSTimer-Linux/target/release/LSTimer # Your path to the file
-Terminal=false
-Type=Application
-Categories=Utility;
-StartupNotify=true
-Icon=/home/yourname/LSTimer-Linux/icon.png
+    [Desktop Entry]
+    Name=LSTimer
+    Comment=Launch LSTimer Rust App
+    Exec=/home/yourname/LSTimer-Linux/target/release/LSTimer
+    Terminal=false
+    Type=Application
+    Categories=Utility;
+    StartupNotify=true
+    Icon=/home/yourname/LSTimer-Linux/icon.png
 ```
+    Save and close. It should now appear in your app launcher.
 
 🧠 Usage
+```
+    Space: Start / Stop timer
 
-    Press Space to start/stop the timer
+    Wait for green light before releasing the spacebar
 
-    Wait for 2 seconds before releasing spacebar
+    Scramble auto-refreshes for every event
 
-    Automatically generates a scramble on each solve
+    Escape (Esc): Exit app safely
 
-    Scramble changes for each event
+    ⚠️ Note: On exit, a message may say the app is unresponsive — just click Terminate.
+```
 
 🔒 License
 
 All rights reserved.
-You may view the source code but may not redistribute, reuse, or modify it.
+Source code is viewable but modification, reuse, and redistribution are prohibited.
 
-Made by Link-the-Coder 💻
-
+Made by Link-the-Coder
