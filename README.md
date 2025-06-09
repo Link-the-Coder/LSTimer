@@ -11,7 +11,7 @@ A **minimal**, **accurate**, and **blazingly fast** Rubik's Cube timer for Linux
 - ✅ WCA-style inspection and timing
 - 🎯 Scramble generator per event
 - 📊 Session stats
-- 🔗 Bluetooth timer support (coming soon)
+- 🔗 Bluetooth timer support ***(coming soon)***
 - ⚡ Lightweight & terminal-based
 - 🧠 Clean and intuitive UI
 
