@@ -1,5 +1,8 @@
 # LSTimer-Linux
 
+# **Overview**
+![Timer Screenshot](screenshots/timer.png)
+
 **LSTimer** is a minimal and efficient Rubik's Cube timer for Linux, built in Rust.
 
 ## 🚀 Features
@@ -12,6 +15,15 @@
 ## 🛠 Requirements
 - Linux (tested on Arch with Wayland, KDE Plasma 6 and Hyprland)
 - Rust (1.87+)
+
+# **Custom Settings**
+![Timer Screenshot](screenshots/settings.png)
+
+# **Multiple events**
+![Timer Screenshot](screenshots/multiple-events.png)
+
+# **Detailed Stats**
+![Timer Screenshot](screenshots/detailed-stats.png)
 
 ## Information
 **When closing, it may say app unresponding, ignore that, click terminate!!**
