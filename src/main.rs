@@ -1,10 +1,11 @@
+use chrono::{DateTime, Local};
 use eframe::egui;
-use egui::{Color32, RichText, Stroke, Rounding, Vec2};
+use egui::{Color32, RichText, Rounding, Stroke, Vec2};
+use egui_plot::{Legend, Line, LineStyle, Plot, PlotPoints};
+use rand::Rng;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
-use chrono::{DateTime, Local};
-use rand::Rng;
 
 // Represents the possible states of the timer
 #[derive(Debug, Clone, PartialEq)]
@@ -72,7 +73,7 @@ struct TimeRecord {
 }
 
 // Represents penalties that can be applied to a solve
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 enum Penalty {
     Plus2,  // +2 second penalty
     DNF,    // Did Not Finish
@@ -116,7 +117,7 @@ struct Theme {
     error: [u8; 3],             // Error color (e.g., DNF)
     corner_radius: f32,         // Corner radius for UI elements
     font_size_small: f32,       // Small font size
-    font_size_normal: f32,      // Normal font size
+    font_size_normal: f32,       // Normal font size
     font_size_large: f32,       // Large font size
     font_size_timer: f32,       // Timer font size
     enable_animations: bool,    // Enable/disable animations
@@ -223,6 +224,7 @@ struct UIState {
     confirm_delete_index: Option<usize>, // Index of the time to delete
     #[serde(skip)]
     show_exit_popup: bool,         // Visibility of the exit confirmation popup
+    is_first_launch: bool,         // Flag for showing the welcome message
 }
 
 impl Default for UIState {
@@ -237,6 +239,7 @@ impl Default for UIState {
             comment_text: String::new(),
             confirm_delete_index: None,
             show_exit_popup: false,
+            is_first_launch: true,
         }
     }
 }
@@ -262,9 +265,7 @@ struct CubeTimer {
     key_preparation_time: Duration, // Minimum hold time to start timer
     timer_scale: f32,              // Current timer scale for animation
     target_timer_scale: f32,       // Target timer scale for animation
-    close_requested: bool,         // Tracks if a close request is pending
-    close_scheduled: bool,          // Tracks if a close is scheduled
-    close_delay_start: Option<Instant>, // Time when close was initiated
+    last_save_time: Instant,
 }
 
 impl Default for CubeTimer {
@@ -317,9 +318,7 @@ impl Default for CubeTimer {
             key_preparation_time: Duration::from_millis(300),
             timer_scale: 1.0,
             target_timer_scale: 1.0,
-            close_requested: false,
-            close_scheduled: false,
-            close_delay_start: None,
+            last_save_time: Instant::now(),
         }
     }
 }
@@ -329,6 +328,7 @@ impl CubeTimer {
     fn new(_cc: &eframe::CreationContext<'_>) -> Self {
         let mut app = Self::default();
         app.load_data();
+        app.last_save_time = Instant::now();
         app
     }
 
@@ -679,6 +679,7 @@ impl CubeTimer {
             self.records.remove(index);
             self.calculate_statistics();
             self.ui_state.confirm_delete_index = None;
+            self.save_data(); // Ensure data is saved after deletion
         }
     }
 
@@ -686,6 +687,15 @@ impl CubeTimer {
     fn update_time_comment(&mut self, index: usize, comment: String) {
         if index < self.records.len() {
             self.records[index].comment = comment;
+        }
+    }
+
+    // Applies a penalty to a time record
+    fn apply_penalty(&mut self, index: usize, penalty: Option<Penalty>) {
+        if index < self.records.len() {
+            self.records[index].penalty = penalty;
+            self.calculate_statistics();
+            self.save_data();
         }
     }
 
@@ -735,6 +745,7 @@ impl CubeTimer {
         visuals.button_frame = true;
         visuals.collapsing_header_frame = true;
         ctx.set_visuals(visuals);
+        ctx.set_pixels_per_point(1.5);
     }
 
     // Renders the times panel on the left side
@@ -807,11 +818,13 @@ impl CubeTimer {
                 ui.label(RichText::new("No times yet").size(self.theme.font_size_normal).color(self.theme.text_secondary_color()));
             });
         } else {
+            let total_records = current_event_records.len();
             egui::ScrollArea::vertical()
                 .auto_shrink([false; 2])
                 .show(ui, |ui| {
                     for (display_index, (actual_index, record)) in current_event_records.iter().enumerate() {
-                        self.render_time_entry(ui, display_index + 1, *actual_index, record);
+                        let solve_number = total_records - display_index;
+                        self.render_time_entry(ui, solve_number, *actual_index, record);
                     }
                 });
         }
@@ -894,7 +907,7 @@ impl CubeTimer {
     fn render_time_entry_content(&mut self, ui: &mut egui::Ui, entry_response: &egui::Response, display_index: usize, actual_index: usize, record: &TimeRecord, is_editing: bool) {
         ui.allocate_ui_at_rect(entry_response.rect.shrink(8.0), |ui| {
             self.render_time_entry_main_row(ui, display_index, actual_index, record);
-            self.render_time_entry_comment_section(ui, actual_index, record, is_editing);
+            self.render_comment_and_penalty_editor(ui, actual_index, record, is_editing);
         });
         ui.add_space(4.0);
     }
@@ -938,7 +951,7 @@ impl CubeTimer {
 
         let time_text = match record.penalty {
             Some(Penalty::DNF) => "DNF".to_string(),
-            Some(Penalty::Plus2) => format!("{}+", Self::format_time(record.time)),
+            Some(Penalty::Plus2) => format!("{}+2", Self::format_time(record.time)),
             None => Self::format_time(record.time),
         };
 
@@ -973,8 +986,8 @@ impl CubeTimer {
         }
     }
 
-    // Renders the comment section of a time entry
-    fn render_time_entry_comment_section(&mut self, ui: &mut egui::Ui, actual_index: usize, record: &TimeRecord, is_editing: bool) {
+    // Renders the comment section with penalty buttons
+    fn render_comment_and_penalty_editor(&mut self, ui: &mut egui::Ui, actual_index: usize, record: &TimeRecord, is_editing: bool) {
         if !record.comment.is_empty() && !is_editing {
             ui.label(RichText::new(&record.comment)
                 .size(self.theme.font_size_small)
@@ -983,24 +996,40 @@ impl CubeTimer {
         }
 
         if is_editing {
-            self.render_comment_editor(ui, actual_index);
-        }
-    }
+            ui.horizontal(|ui| {
+                ui.text_edit_singleline(&mut self.ui_state.comment_text);
+                if ui.small_button("✓").clicked() {
+                    self.update_time_comment(actual_index, self.ui_state.comment_text.clone());
+                    self.ui_state.editing_comment_index = None;
+                    self.ui_state.comment_text.clear();
+                    self.save_data();
+                }
+                if ui.small_button("✕").clicked() {
+                    self.ui_state.editing_comment_index = None;
+                    self.ui_state.comment_text.clear();
+                }
+            });
 
-    // Renders the comment editor
-    fn render_comment_editor(&mut self, ui: &mut egui::Ui, actual_index: usize) {
-        ui.horizontal(|ui| {
-            ui.text_edit_singleline(&mut self.ui_state.comment_text);
-            if ui.small_button("✓").clicked() {
-                self.update_time_comment(actual_index, self.ui_state.comment_text.clone());
-                self.ui_state.editing_comment_index = None;
-                self.ui_state.comment_text.clear();
-            }
-            if ui.small_button("✕").clicked() {
-                self.ui_state.editing_comment_index = None;
-                self.ui_state.comment_text.clear();
-            }
-        });
+            ui.horizontal(|ui| {
+                let plus2_color = if record.penalty == Some(Penalty::Plus2) { self.theme.warning_color() } else { self.theme.text_primary_color().gamma_multiply(0.5) };
+                if ui.add(egui::Button::new(RichText::new("+2").color(plus2_color))).clicked() {
+                    if record.penalty == Some(Penalty::Plus2) {
+                        self.apply_penalty(actual_index, None);
+                    } else {
+                        self.apply_penalty(actual_index, Some(Penalty::Plus2));
+                    }
+                }
+
+                let dnf_color = if record.penalty == Some(Penalty::DNF) { self.theme.error_color() } else { self.theme.text_primary_color().gamma_multiply(0.5) };
+                if ui.add(egui::Button::new(RichText::new("DNF").color(dnf_color))).clicked() {
+                    if record.penalty == Some(Penalty::DNF) {
+                        self.apply_penalty(actual_index, None);
+                    } else {
+                        self.apply_penalty(actual_index, Some(Penalty::DNF));
+                    }
+                }
+            });
+        }
     }
 
     // Renders the main content area
@@ -1094,7 +1123,7 @@ impl CubeTimer {
     // Renders the timer display
     fn render_enhanced_timer(&self, ui: &mut egui::Ui) {
         let timer_text = self.get_timer_text();
-        let timer_color = self.theme.timer_color(&self.state);
+        let timer_color = self.get_timer_color();
         let scaled_size = self.theme.font_size_timer * self.timer_scale;
 
         let timer_response = ui.allocate_response(
@@ -1132,11 +1161,33 @@ impl CubeTimer {
         }
     }
 
+    // Determines the timer text color based on the state and hold time
+    fn get_timer_color(&self) -> Color32 {
+        if let TimerState::Preparing = self.state {
+            if let Some(hold_start) = self.space_hold_start {
+                if hold_start.elapsed() >= self.key_preparation_time {
+                    return self.theme.success_color();
+                }
+            }
+        }
+        self.theme.timer_color(&self.state)
+    }
+
     // Renders the timer state indicator
     fn render_enhanced_state_indicator(&self, ui: &mut egui::Ui) {
         let (state_text, state_color) = match self.state {
             TimerState::Ready => ("Press and hold SPACE to start", self.theme.text_secondary_color()),
-            TimerState::Preparing => ("Hold SPACE...", self.theme.timer_color(&TimerState::Preparing)),
+            TimerState::Preparing => {
+                if let Some(hold_start) = self.space_hold_start {
+                    if hold_start.elapsed() >= self.key_preparation_time {
+                        ("Release to Start", self.theme.success_color())
+                    } else {
+                        ("Hold SPACE...", self.theme.timer_color(&TimerState::Preparing))
+                    }
+                } else {
+                    ("Hold SPACE...", self.theme.timer_color(&TimerState::Preparing))
+                }
+            },
             TimerState::Running => ("RUNNING - Press SPACE to stop", self.theme.timer_color(&TimerState::Running)),
             TimerState::Stopped => ("Press SPACE for next solve", self.theme.success_color()),
         };
@@ -1200,6 +1251,47 @@ impl CubeTimer {
         self.render_statistics_window(ctx);
         self.render_delete_confirmation(ctx);
         self.render_exit_confirmation(ctx);
+        self.render_welcome_popup(ctx);
+    }
+
+    // Renders the welcome popup for first-time users
+    fn render_welcome_popup(&mut self, ctx: &egui::Context) {
+        if !self.ui_state.is_first_launch {
+            return;
+        }
+
+        let mut is_open = true;
+        egui::Window::new("👋 Welcome!")
+            .open(&mut is_open)
+            .default_width(400.0)
+            .resizable(false)
+            .collapsible(false)
+            .show(ctx, |ui| {
+                ui.label(RichText::new("Welcome to CubeTimer Pro! Here's a quick guide to get you started:").size(self.theme.font_size_normal));
+                ui.add_space(10.0);
+
+                ui.label(RichText::new("To solve:").strong().size(self.theme.font_size_normal));
+                ui.label("Hold the SPACE bar to prepare the timer. The text will turn green. Release the SPACE bar to start the timer, and press it again to stop.");
+                ui.add_space(10.0);
+
+                ui.label(RichText::new("Buttons:").strong().size(self.theme.font_size_normal));
+                ui.label("📊 Times: Opens the panel on the left to view your solve history and statistics.");
+                ui.label("📈 Stats: Opens a separate window to view a graph of your solve times.");
+                ui.label("⚙ Settings: Opens a window to customize the app's theme and other options.");
+                ui.add_space(10.0);
+
+                ui.centered_and_justified(|ui| {
+                    if ui.button(RichText::new("Got it!").strong()).clicked() {
+                        self.ui_state.is_first_launch = false;
+                        self.save_data();
+                    }
+                });
+            });
+
+        if !is_open {
+            self.ui_state.is_first_launch = false;
+            self.save_data();
+        }
     }
 
     // Renders the settings window
@@ -1211,174 +1303,145 @@ impl CubeTimer {
         let mut show_settings = self.ui_state.show_settings;
         egui::Window::new("⚙ Settings")
             .open(&mut show_settings)
-            .default_width(500.0)
+            .default_width(600.0)
             .resizable(true)
             .show(ctx, |ui| {
                 egui::ScrollArea::vertical().show(ui, |ui| {
-                    self.render_theme_settings(ui);
-                    ui.separator();
-                    self.render_animation_settings(ui);
-                    ui.separator();
-                    self.render_custom_events_settings(ui);
+                    ui.add_space(5.0);
+
+                    // Theme Colors Section
+                    egui::CollapsingHeader::new(RichText::new("🎨 Theme Colors").strong())
+                        .default_open(true)
+                        .show(ui, |ui| {
+                            ui.columns(2, |columns| {
+                                columns[0].vertical(|ui| {
+                                    ui.add_space(5.0);
+                                    ui.label("Background:");
+                                    ui.color_edit_button_srgb(&mut self.theme.background);
+                                    ui.add_space(10.0);
+                                    ui.label("Surface:");
+                                    ui.color_edit_button_srgb(&mut self.theme.surface);
+                                    ui.add_space(10.0);
+                                    ui.label("Surface Variant:");
+                                    ui.color_edit_button_srgb(&mut self.theme.surface_variant);
+                                    ui.add_space(10.0);
+                                    ui.label("Primary Text:");
+                                    ui.color_edit_button_srgb(&mut self.theme.text_primary);
+                                    ui.add_space(10.0);
+                                    ui.label("Secondary Text:");
+                                    ui.color_edit_button_srgb(&mut self.theme.text_secondary);
+                                    ui.add_space(10.0);
+                                });
+
+                                columns[1].vertical(|ui| {
+                                    ui.add_space(5.0);
+                                    ui.label("Primary Accent:");
+                                    ui.color_edit_button_srgb(&mut self.theme.accent_primary);
+                                    ui.add_space(10.0);
+                                    ui.label("Secondary Accent:");
+                                    ui.color_edit_button_srgb(&mut self.theme.accent_secondary);
+                                    ui.add_space(10.0);
+                                    ui.label("Success:");
+                                    ui.color_edit_button_srgb(&mut self.theme.success);
+                                    ui.add_space(10.0);
+                                    ui.label("Warning:");
+                                    ui.color_edit_button_srgb(&mut self.theme.warning);
+                                    ui.add_space(10.0);
+                                    ui.label("Error:");
+                                    ui.color_edit_button_srgb(&mut self.theme.error);
+                                    ui.add_space(10.0);
+                                });
+                            });
+
+                            ui.separator();
+                            ui.label(RichText::new("Timer Colors").strong());
+                            ui.columns(4, |columns| {
+                                columns[0].vertical(|ui| {
+                                    ui.label("Ready:");
+                                    ui.color_edit_button_srgb(&mut self.theme.timer_ready);
+                                });
+                                columns[1].vertical(|ui| {
+                                    ui.label("Preparing:");
+                                    ui.color_edit_button_srgb(&mut self.theme.timer_preparing);
+                                });
+                                columns[2].vertical(|ui| {
+                                    ui.label("Running:");
+                                    ui.color_edit_button_srgb(&mut self.theme.timer_running);
+                                });
+                                columns[3].vertical(|ui| {
+                                    ui.label("Stopped:");
+                                    ui.color_edit_button_srgb(&mut self.theme.timer_stopped);
+                                });
+                            });
+                        });
+                    ui.add_space(10.0);
                     ui.separator();
 
-                    ui.horizontal(|ui| {
-                        if ui.button("💾 Save Settings").clicked() {
-                            self.save_data();
-                        }
-                        if ui.button("🔄 Reset to Default").clicked() {
-                            self.theme = Theme::default();
-                        }
-                    });
+                    // UI Settings Section
+                    egui::CollapsingHeader::new(RichText::new("⚙ UI Settings").strong())
+                        .default_open(false)
+                        .show(ui, |ui| {
+                            ui.add_space(5.0);
+                            ui.label("Corner Radius:");
+                            ui.add(egui::Slider::new(&mut self.theme.corner_radius, 0.0..=24.0));
+                            ui.add_space(10.0);
+
+                            ui.label("Font Sizes:");
+                            ui.horizontal(|ui| {
+                                ui.label("Small:");
+                                ui.add(egui::Slider::new(&mut self.theme.font_size_small, 8.0..=16.0));
+                                ui.label("Normal:");
+                                ui.add(egui::Slider::new(&mut self.theme.font_size_normal, 10.0..=20.0));
+                                ui.label("Large:");
+                                ui.add(egui::Slider::new(&mut self.theme.font_size_large, 14.0..=28.0));
+                            });
+                            ui.add_space(10.0);
+
+                            ui.checkbox(&mut self.theme.enable_animations, "Enable animations");
+                            ui.add_space(10.0);
+                            if self.theme.enable_animations {
+                                ui.label("Animation Speed:");
+                                ui.add(egui::Slider::new(&mut self.theme.animation_speed, 0.5..=2.0));
+                            }
+                        });
+                    ui.add_space(10.0);
+                    ui.separator();
+
+                    // Events Section
+                    egui::CollapsingHeader::new(RichText::new("🎲 Custom Events").strong())
+                        .default_open(false)
+                        .show(ui, |ui| {
+                            ui.add_space(5.0);
+                            ui.label("Create New Custom Event:");
+                            ui.horizontal(|ui| {
+                                ui.label("Name:");
+                                ui.text_edit_singleline(&mut self.new_custom_event_name);
+                                ui.label("Moves (comma-separated):");
+                                ui.text_edit_singleline(&mut self.new_custom_moves);
+                            });
+
+                            if ui.button("Add Custom Event").clicked() {
+                                self.add_custom_event();
+                            }
+
+                            ui.separator();
+
+                            ui.label("Existing Custom Events:");
+                            let custom_event_names: Vec<String> = self.custom_events.keys().cloned().collect();
+                            for name in custom_event_names {
+                                ui.horizontal(|ui| {
+                                    ui.label(&name);
+                                    if ui.button("Remove").clicked() {
+                                        self.remove_custom_event(&name);
+                                    }
+                                });
+                            }
+                        });
+                    ui.add_space(10.0);
+                    ui.separator();
                 });
             });
         self.ui_state.show_settings = show_settings;
-    }
-
-    // Renders theme settings
-    fn render_theme_settings(&mut self, ui: &mut egui::Ui) {
-        ui.heading("🎨 Theme Colors");
-
-        ui.columns(2, |columns| {
-            columns[0].vertical(|ui| {
-                ui.horizontal(|ui| {
-                    ui.label("Background:");
-                    ui.color_edit_button_srgb(&mut self.theme.background);
-                });
-                ui.horizontal(|ui| {
-                    ui.label("Surface:");
-                    ui.color_edit_button_srgb(&mut self.theme.surface);
-                });
-                ui.horizontal(|ui| {
-                    ui.label("Surface Variant:");
-                    ui.color_edit_button_srgb(&mut self.theme.surface_variant);
-                });
-                ui.horizontal(|ui| {
-                    ui.label("Primary Text:");
-                    ui.color_edit_button_srgb(&mut self.theme.text_primary);
-                });
-                ui.horizontal(|ui| {
-                    ui.label("Secondary Text:");
-                    ui.color_edit_button_srgb(&mut self.theme.text_secondary);
-                });
-            });
-
-            columns[1].vertical(|ui| {
-                ui.horizontal(|ui| {
-                    ui.label("Primary Accent:");
-                    ui.color_edit_button_srgb(&mut self.theme.accent_primary);
-                });
-                ui.horizontal(|ui| {
-                    ui.label("Secondary Accent:");
-                    ui.color_edit_button_srgb(&mut self.theme.accent_secondary);
-                });
-                ui.horizontal(|ui| {
-                    ui.label("Success:");
-                    ui.color_edit_button_srgb(&mut self.theme.success);
-                });
-                ui.horizontal(|ui| {
-                    ui.label("Warning:");
-                    ui.color_edit_button_srgb(&mut self.theme.warning);
-                });
-                ui.horizontal(|ui| {
-                    ui.label("Error:");
-                    ui.color_edit_button_srgb(&mut self.theme.error);
-                });
-            });
-        });
-
-        ui.separator();
-        ui.label(RichText::new("Timer Colors").size(self.theme.font_size_large));
-
-        ui.columns(2, |columns| {
-            columns[0].vertical(|ui| {
-                ui.horizontal(|ui| {
-                    ui.label("Ready:");
-                    ui.color_edit_button_srgb(&mut self.theme.timer_ready);
-                });
-                ui.horizontal(|ui| {
-                    ui.label("Preparing:");
-                    ui.color_edit_button_srgb(&mut self.theme.timer_preparing);
-                });
-            });
-
-            columns[1].vertical(|ui| {
-                ui.horizontal(|ui| {
-                    ui.label("Running:");
-                    ui.color_edit_button_srgb(&mut self.theme.timer_running);
-                });
-                ui.horizontal(|ui| {
-                    ui.label("Stopped:");
-                    ui.color_edit_button_srgb(&mut self.theme.timer_stopped);
-                });
-            });
-        });
-
-        ui.separator();
-        ui.label(RichText::new("UI Settings").size(self.theme.font_size_large));
-
-        ui.horizontal(|ui| {
-            ui.label("Corner Radius:");
-            ui.add(egui::Slider::new(&mut self.theme.corner_radius, 0.0..=20.0).suffix("px"));
-        });
-
-        ui.horizontal(|ui| {
-            ui.label("Timer Font Size:");
-            ui.add(egui::Slider::new(&mut self.theme.font_size_timer, 40.0..=120.0).suffix("px"));
-        });
-    }
-
-    // Renders animation settings
-    fn render_animation_settings(&mut self, ui: &mut egui::Ui) {
-        ui.heading("🎬 Animations");
-
-        ui.horizontal(|ui| {
-            ui.checkbox(&mut self.theme.enable_animations, "Enable Animations");
-        });
-
-        if self.theme.enable_animations {
-            ui.horizontal(|ui| {
-                ui.label("Animation Speed:");
-                ui.add(egui::Slider::new(&mut self.theme.animation_speed, 0.1..=3.0).suffix("x"));
-            });
-        }
-    }
-
-    // Renders custom events settings
-    fn render_custom_events_settings(&mut self, ui: &mut egui::Ui) {
-        ui.heading("🎲 Custom Events");
-
-        ui.horizontal(|ui| {
-            ui.label("Event Name:");
-            ui.text_edit_singleline(&mut self.new_custom_event_name);
-        });
-
-        ui.horizontal(|ui| {
-            ui.label("Moves (space-separated):");
-            ui.text_edit_singleline(&mut self.new_custom_moves);
-        });
-
-        if ui.button("➕ Add Custom Event").clicked() && !self.new_custom_event_name.is_empty() {
-            self.add_custom_event();
-        }
-
-        if !self.custom_events.is_empty() {
-            ui.separator();
-            ui.label(RichText::new("Existing Custom Events").size(self.theme.font_size_large));
-
-            let events_to_remove: Vec<String> = self.custom_events.keys().cloned().collect();
-            for event_name in events_to_remove {
-                ui.horizontal(|ui| {
-                    ui.label(&event_name);
-                    if ui.small_button("🗑").clicked() {
-                        self.custom_events.remove(&event_name);
-                        self.available_events.retain(|e| {
-                            !matches!(e, CubeEvent::Custom(name) if name == &event_name)
-                        });
-                    }
-                });
-            }
-        }
     }
 
     // Renders the statistics window
@@ -1387,133 +1450,155 @@ impl CubeTimer {
             return;
         }
 
-        let current_event = self.current_event.clone();
-        let statistics = self.statistics.clone();
-        let records = self.records.clone();
-        let theme = self.theme.clone();
-
-        egui::Window::new("📈 Detailed Statistics")
-            .open(&mut self.ui_state.show_statistics)
-            .default_width(400.0)
+        let mut show_stats = self.ui_state.show_statistics;
+        egui::Window::new("📈 Statistics")
+            .open(&mut show_stats)
+            .default_width(1000.0)
+            .default_height(800.0)
             .resizable(true)
             .show(ctx, |ui| {
-                ui.heading(format!("Statistics for {}", current_event));
-                ui.separator();
+                let current_event_records: Vec<(usize, TimeRecord)> = self.records
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, r)| r.event == self.current_event)
+                    .map(|(i, r)| (i, r.clone()))
+                    .collect();
 
-                Self::render_statistics_grid_static(ui, &statistics, &records, &current_event, &theme);
+                if current_event_records.len() < 2 {
+                    ui.centered_and_justified(|ui| {
+                        ui.label(RichText::new("Need at least 2 solves to show statistics").size(self.theme.font_size_normal).color(self.theme.text_secondary_color()));
+                    });
+                    return;
+                }
+
+                // Prepare plot data
+                let mut solve_points: Vec<[f64; 2]> = Vec::new();
+                let mut ao5_points: Vec<[f64; 2]> = Vec::new();
+                let mut ao12_points: Vec<[f64; 2]> = Vec::new();
+
+                let mut current_times_for_avg: Vec<Duration> = Vec::new();
+                for (i, (_, record)) in current_event_records.iter().enumerate() {
+                    let solve_time_ms = record.time.as_millis() as f64;
+                    solve_points.push([i as f64, solve_time_ms]);
+
+                    current_times_for_avg.push(record.time);
+
+                    if current_times_for_avg.len() >= 5 {
+                        let last_5: Vec<Duration> = current_times_for_avg.iter().rev().take(5).cloned().collect();
+                        if let Some(ao5) = Self::calculate_average(&last_5) {
+                            ao5_points.push([i as f64, ao5.as_millis() as f64]);
+                        }
+                    }
+
+                    if current_times_for_avg.len() >= 12 {
+                        let last_12: Vec<Duration> = current_times_for_avg.iter().rev().take(12).cloned().collect();
+                        if let Some(ao12) = Self::calculate_average(&last_12) {
+                            ao12_points.push([i as f64, ao12.as_millis() as f64]);
+                        }
+                    }
+                }
+
+                let solve_line = Line::new(PlotPoints::from(solve_points))
+                    .color(self.theme.accent_primary_color())
+                    .name("Solve Times");
+                let ao5_line = Line::new(PlotPoints::from(ao5_points))
+                    .color(self.theme.success_color())
+                    .style(LineStyle::Dashed { length: 5.0 })
+                    .name("Ao5");
+                let ao12_line = Line::new(PlotPoints::from(ao12_points))
+                    .color(self.theme.accent_secondary_color())
+                    .style(LineStyle::Dashed { length: 8.0 })
+                    .name("Ao12");
+
+                let plot = Plot::new("time_graph")
+                    .view_aspect(2.0)
+                    .show_axes([false, true])
+                    .legend(Legend::default())
+                    .set_margin_fraction(Vec2::new(0.05, 0.05));
+
+                plot.show(ui, |plot_ui| {
+                    plot_ui.line(solve_line);
+                    plot_ui.line(ao5_line);
+                    plot_ui.line(ao12_line);
+                });
             });
+
+        self.ui_state.show_statistics = show_stats;
     }
 
-    // Renders the statistics grid
-    fn render_statistics_grid_static(ui: &mut egui::Ui, statistics: &Statistics, records: &[TimeRecord], current_event: &CubeEvent, theme: &Theme) {
-        egui::Grid::new("stats_grid")
-            .num_columns(2)
-            .spacing([20.0, 10.0])
-            .show(ui, |ui| {
-                if let Some(best) = statistics.best {
-                    ui.label(RichText::new("Best:").color(theme.text_secondary_color()));
-                    ui.label(RichText::new(Self::format_time(best)).color(theme.success_color()));
-                    ui.end_row();
-                }
-
-                if let Some(worst) = statistics.worst {
-                    ui.label(RichText::new("Worst:").color(theme.text_secondary_color()));
-                    ui.label(RichText::new(Self::format_time(worst)).color(theme.error_color()));
-                    ui.end_row();
-                }
-
-                if let Some(mean) = statistics.mean {
-                    ui.label(RichText::new("Mean:").color(theme.text_secondary_color()));
-                    ui.label(RichText::new(Self::format_time(mean)).color(theme.text_primary_color()));
-                    ui.end_row();
-                }
-
-                if let Some(ao5) = statistics.current_ao5 {
-                    ui.label(RichText::new("Current Ao5:").color(theme.text_secondary_color()));
-                    ui.label(RichText::new(Self::format_time(ao5)).color(theme.accent_primary_color()));
-                    ui.end_row();
-                }
-
-                if let Some(ao12) = statistics.current_ao12 {
-                    ui.label(RichText::new("Current Ao12:").color(theme.text_secondary_color()));
-                    ui.label(RichText::new(Self::format_time(ao12)).color(theme.accent_secondary_color()));
-                    ui.end_row();
-                }
-
-                if let Some(ao100) = statistics.current_ao100 {
-                    ui.label(RichText::new("Current Ao100:").color(theme.text_secondary_color()));
-                    ui.label(RichText::new(Self::format_time(ao100)).color(theme.text_primary_color()));
-                    ui.end_row();
-                }
-
-                let total_solves = records.iter()
-                    .filter(|r| r.event == *current_event)
-                    .count();
-                ui.label(RichText::new("Total solves:").color(theme.text_secondary_color()));
-                ui.label(RichText::new(total_solves.to_string()).color(theme.text_primary_color()));
-                ui.end_row();
-            });
-    }
-
-    // Renders the delete confirmation window
+    // Renders the delete confirmation popup
     fn render_delete_confirmation(&mut self, ctx: &egui::Context) {
-        if let Some(index) = self.ui_state.confirm_delete_index {
-            egui::Window::new("⚠ Confirm Delete")
-                .collapsible(false)
-                .resizable(false)
-                .anchor(egui::Align2::CENTER_CENTER, Vec2::ZERO)
-                .show(ctx, |ui| {
-                    ui.label("Are you sure you want to delete this time?");
-                    ui.label("This action cannot be undone.");
+        if self.ui_state.confirm_delete_index.is_none() {
+            return;
+        }
 
-                    ui.horizontal(|ui| {
-                        if ui.button("🗑 Delete").clicked() {
+        let mut show_popup = true;
+        egui::Window::new("Confirm Delete")
+            .open(&mut show_popup)
+            .default_width(300.0)
+            .resizable(false)
+            .collapsible(false)
+            .show(ctx, |ui| {
+                ui.label(RichText::new("Are you sure you want to delete this time?").size(self.theme.font_size_normal).color(self.theme.warning_color()));
+
+                ui.add_space(10.0);
+                ui.horizontal(|ui| {
+                    if ui.button("Yes, delete").clicked() {
+                        if let Some(index) = self.ui_state.confirm_delete_index {
                             self.delete_time(index);
                         }
-                        if ui.button("✕ Cancel").clicked() {
-                            self.ui_state.confirm_delete_index = None;
-                        }
-                    });
+                    }
+                    if ui.button("No, cancel").clicked() {
+                        self.ui_state.confirm_delete_index = None;
+                    }
                 });
+            });
+
+        if !show_popup {
+            self.ui_state.confirm_delete_index = None;
         }
     }
 
-    // Renders the exit confirmation window
+    // Renders the exit confirmation popup
     fn render_exit_confirmation(&mut self, ctx: &egui::Context) {
-        if self.ui_state.show_exit_popup {
-            egui::Window::new("🚪 Exit CubeTimer")
-                .collapsible(false)
-                .resizable(false)
-                .anchor(egui::Align2::CENTER_CENTER, Vec2::ZERO)
-                .show(ctx, |ui| {
-                    ui.label("Do you want to quit CubeTimer?");
-                    ui.label("Your data will be saved if you choose to quit.");
-
-                    ui.horizontal(|ui| {
-                        if ui.button("✔ Quit").clicked() {
-                            self.save_data();
-                            self.close_requested = true;
-                            ctx.send_viewport_cmd(egui::ViewportCommand::Close);
-                        }
-                        if ui.button("✕ Cancel").clicked() {
-                            self.ui_state.show_exit_popup = false;
-                            self.close_requested = false;
-                        }
-                    });
-                });
+        if !self.ui_state.show_exit_popup {
+            return;
         }
+
+        let mut show_exit_popup = self.ui_state.show_exit_popup;
+        egui::Window::new("Exit Application")
+            .open(&mut show_exit_popup)
+            .default_width(300.0)
+            .resizable(false)
+            .collapsible(false)
+            .show(ctx, |ui| {
+                ui.label(RichText::new("Do you want to save your data before exiting?").size(self.theme.font_size_normal));
+                ui.add_space(10.0);
+                ui.horizontal(|ui| {
+                    if ui.button(RichText::new("Save & Exit").strong()).clicked() {
+                        self.save_data();
+                        std::process::exit(0);
+                    }
+                    if ui.button("Exit without saving").clicked() {
+                        std::process::exit(0);
+                    }
+                    if ui.button("Cancel").clicked() {
+                        self.ui_state.show_exit_popup = false;
+                    }
+                });
+            });
     }
 
     // Adds a new custom event
     fn add_custom_event(&mut self) {
-        let moves: Vec<String> = self.new_custom_moves
-            .split_whitespace()
-            .map(|s| s.to_string())
-            .collect();
+        if self.new_custom_event_name.trim().is_empty() || self.new_custom_moves.trim().is_empty() {
+            return;
+        }
 
+        let moves: Vec<String> = self.new_custom_moves.split(',').map(|s| s.trim().to_string()).collect();
         let custom_event = CustomEvent {
             name: self.new_custom_event_name.clone(),
-            scramble_length: 15,
+            scramble_length: 20, // Default scramble length for custom events for now
             moves,
         };
 
@@ -1541,71 +1626,13 @@ impl CubeTimer {
             }
         }
     }
-
-    // Automatically saves data every 10 solves
-    fn auto_save(&mut self) {
-        if self.records.len() % 10 == 0 && !self.records.is_empty() {
-            self.save_data();
-        }
-    }
-
-    // Checks for close requests
-    fn handle_close_request(&mut self, ctx: &egui::Context) {
-        ctx.input(|i| {
-            // Handle focus loss
-            if self.handle_focus_loss(i, ctx) {
-                return;
-            }
-
-            // Handle close requests
-            if self.should_trigger_close(i) && !self.close_scheduled {
-                self.initiate_close(ctx);
-            }
-        });
-    }
-
-    // Helper method to handle focus loss
-    fn handle_focus_loss(&mut self, input: &egui::InputState, ctx: &egui::Context) -> bool {
-        if input.viewport().focused.unwrap_or(true) {
-            return false;
-        }
-
-        if matches!(self.state, TimerState::Running) {
-            self.state = TimerState::Stopped;
-            self.stop_timer(Instant::now());
-            eprintln!("App lost focus: timer paused and time saved");
-            ctx.request_repaint_after(Duration::from_millis(100));
-        }
-        true
-    }
-
-    // Helper method to check if a close should be triggered
-    fn should_trigger_close(&self, input: &egui::InputState) -> bool {
-        let close_requested = input.viewport().close_requested();
-        let alt_f4 = input.modifiers.alt && input.key_pressed(egui::Key::F4);
-        let cmd_q = input.modifiers.command && input.key_pressed(egui::Key::Q); // Super+Q, Cmd+Q
-        let ctrl_q = input.modifiers.ctrl && input.key_pressed(egui::Key::Q);
-        let cmd_w = input.modifiers.command && input.key_pressed(egui::Key::W); // Super+W, Cmd+W
-        let ctrl_w = input.modifiers.ctrl && input.key_pressed(egui::Key::W);
-
-        close_requested || alt_f4 || cmd_q || ctrl_q || cmd_w || ctrl_w
-    }
-
-    // Helper method to initiate a close
-    fn initiate_close(&mut self, ctx: &egui::Context) {
-        self.save_data();
-        self.close_scheduled = true;
-        self.close_delay_start = Some(Instant::now());
-        eprintln!("Close initiated: data saved, waiting 100ms before closing");
-        ctx.request_repaint(); // Ensure update loop checks delay
-    }
 }
 fn main() -> Result<(), eframe::Error> {
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_inner_size([1400.0, 900.0])
             .with_min_inner_size([1000.0, 700.0])
-            .with_title("CubeTimer Pro - Beautiful Speedcubing Timer"),
+            .with_title("CubeTimer Pro - Cool Speedcubing Timer"),
         ..Default::default()
     };
 
@@ -1618,21 +1645,16 @@ fn main() -> Result<(), eframe::Error> {
 
 impl eframe::App for CubeTimer {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        // Check if close is scheduled and delay has elapsed
-        if self.close_scheduled {
-            if let Some(start) = self.close_delay_start {
-                if Instant::now().duration_since(start) >= Duration::from_millis(100) {
-                    eprintln!("Close delay complete: closing app");
-                    ctx.send_viewport_cmd(egui::ViewportCommand::Close);
-                    return;
-                }
-            }
-        }
-
         self.handle_timer_updates(ctx);
         self.handle_input(ctx);
-        self.handle_close_request(ctx);
         self.setup_theme(ctx);
+
+        let now = Instant::now();
+        if now.duration_since(self.last_save_time) > Duration::from_secs(120) {
+            self.save_data();
+            self.last_save_time = now;
+        }
+
         self.render_times_panel(ctx);
 
         egui::CentralPanel::default().show(ctx, |ui| {
@@ -1640,11 +1662,9 @@ impl eframe::App for CubeTimer {
         });
 
         self.render_windows(ctx);
-        self.auto_save();
     }
 
-    fn save(&mut self, _storage: &mut dyn eframe::Storage) {
-        self.save_data();
+    fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
+        self.ui_state.show_exit_popup = true;
     }
 }
-
