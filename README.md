@@ -25,24 +25,30 @@ A **minimal**, **accurate**, and **blazingly fast** Rubik’s Cube timer for Lin
 
 ### 🧩 Multiple Events
 
-![Multiple Events](screenshots/multiple-events.png)
+![Multiple Events](screenshots/events.png)
 
 ### 📈 Detailed Stats
 
-![Stats](screenshots/detailed-stats.png)
+![Stats](screenshots/stats.png)
 
 ---
 
 ## 🛠️ Requirements
 
 * Git
-* Linux (tested on Arch Linux + Wayland: Hyprland, KDE Plasma 6)
+* Any functioning OS
 * Rust 1.87 or newer
 * Cargo (Rust package manager)
 
 ---
 
 ## 📦 Installation
+
+### Mac and linux:
+
+# Easy option: install the executable file called /LSTimer and run it
+
+# Or (more complex, only for linux):
 
 **⚠️ Please install packages step-by-step with your correct package manager!**
 If unsure, `apt` is likely your package manager (Debian/Ubuntu). Otherwise, search online.
@@ -53,8 +59,8 @@ sudo pacman -S git      # Arch Linux
 sudo apt install git    # Debian/Ubuntu
 
 # Clone the repository
-git clone https://github.com/Link-the-Coder/LSTimer-Linux.git
-cd LSTimer-Linux
+git clone https://github.com/Link-the-Coder/LSTimer-Linux.git ~/LSTimer
+cd LSTimer
 
 # Install Cargo
 sudo pacman -S cargo    # Arch Linux
@@ -86,12 +92,12 @@ Paste this (replace `/home/yourname` with your actual username):
 [Desktop Entry]
 Name=LSTimer
 Comment=Launch LSTimer Rust App
-Exec=/home/yourname/LSTimer-Linux/target/release/LSTimer
+Exec=/home/yourname/LSTimer/LSTimer
 Terminal=false
 Type=Application
 Categories=Utility;
 StartupNotify=true
-Icon=/home/yourname/LSTimer-Linux/icon.png
+Icon=/home/yourname/LSTimer/icon.png
 ```
 
 Save and exit.
