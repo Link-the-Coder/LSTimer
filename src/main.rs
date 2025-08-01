@@ -1524,6 +1524,24 @@ impl CubeTimer {
         self.new_custom_moves.clear();
     }
 
+    // Removes a custom event
+    fn remove_custom_event(&mut self, name: &str) {
+        self.custom_events.remove(name);
+        self.available_events.retain(|event| {
+            if let CubeEvent::Custom(custom_name) = event {
+                custom_name != name
+            } else {
+                true
+            }
+        });
+        if let Some(CubeEvent::Custom(current_name)) = Some(self.current_event.clone()) {
+            if current_name == name {
+                self.current_event = self.available_events[0].clone();
+                self.generate_new_scramble();
+            }
+        }
+    }
+
     // Automatically saves data every 10 solves
     fn auto_save(&mut self) {
         if self.records.len() % 10 == 0 && !self.records.is_empty() {
