@@ -1,7 +1,7 @@
 use chrono::{DateTime, Local};
 use eframe::egui;
 use egui::{Color32, RichText, Rounding, Stroke, Vec2};
-use egui_plot::{Legend, Line, LineStyle, Plot, PlotPoints};
+use egui_plot::{Legend, Line, Plot, PlotPoints};
 use rand::Rng;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -951,7 +951,7 @@ impl CubeTimer {
 
         let time_text = match record.penalty {
             Some(Penalty::DNF) => "DNF".to_string(),
-            Some(Penalty::Plus2) => format!("{}+2", Self::format_time(record.time)),
+            Some(Penalty::Plus2) => format!("{}+", Self::format_time(record.time)),
             None => Self::format_time(record.time),
         };
 
@@ -1445,86 +1445,95 @@ impl CubeTimer {
     }
 
     // Renders the statistics window
-    fn render_statistics_window(&mut self, ctx: &egui::Context) {
-        if !self.ui_state.show_statistics {
-            return;
-        }
-
-        let mut show_stats = self.ui_state.show_statistics;
-        egui::Window::new("📈 Statistics")
-            .open(&mut show_stats)
-            .default_width(1000.0)
-            .default_height(800.0)
-            .resizable(true)
-            .show(ctx, |ui| {
-                let current_event_records: Vec<(usize, TimeRecord)> = self.records
-                    .iter()
-                    .enumerate()
-                    .filter(|(_, r)| r.event == self.current_event)
-                    .map(|(i, r)| (i, r.clone()))
-                    .collect();
-
-                if current_event_records.len() < 2 {
-                    ui.centered_and_justified(|ui| {
-                        ui.label(RichText::new("Need at least 2 solves to show statistics").size(self.theme.font_size_normal).color(self.theme.text_secondary_color()));
+        fn render_statistics_window(&mut self, ctx: &egui::Context) {
+            if !self.ui_state.show_statistics {
+                return;
+            }
+    
+            let mut show_stats = self.ui_state.show_statistics;
+            egui::Window::new("📈 Statistics")
+                .open(&mut show_stats)
+                .default_width(1000.0)
+                .default_height(800.0)
+                .resizable(true)
+                .show(ctx, |ui| {
+                    let current_event_records: Vec<(usize, TimeRecord)> = self.records
+                        .iter()
+                        .enumerate()
+                        .filter(|(_, r)| r.event == self.current_event)
+                        .map(|(i, r)| (i, r.clone()))
+                        .collect();
+    
+                    if current_event_records.len() < 2 {
+                        ui.centered_and_justified(|ui| {
+                            ui.label(RichText::new("Need at least 2 solves to show statistics").size(self.theme.font_size_normal).color(self.theme.text_secondary_color()));
+                        });
+                        return;
+                    }
+    
+                    // Prepare plot data
+                    let mut solve_points: Vec<egui_plot::PlotPoint> = Vec::new();
+                    let mut ao5_points: Vec<egui_plot::PlotPoint> = Vec::new();
+                    let mut ao12_points: Vec<egui_plot::PlotPoint> = Vec::new();
+    
+                    let mut current_times_for_avg: Vec<Duration> = Vec::new();
+                    for (i, (_, record)) in current_event_records.iter().enumerate() {
+                        let solve_time_ms = record.time.as_millis() as f64;
+                        solve_points.push(egui_plot::PlotPoint::new(i as f64, solve_time_ms));
+    
+                        current_times_for_avg.push(record.time);
+    
+                        if current_times_for_avg.len() >= 5 {
+                            let last_5: Vec<Duration> = current_times_for_avg.iter().rev().take(5).cloned().collect();
+                            if let Some(ao5) = Self::calculate_average(&last_5) {
+                                ao5_points.push(egui_plot::PlotPoint::new(i as f64, ao5.as_millis() as f64));
+                            }
+                        }
+    
+                        if current_times_for_avg.len() >= 12 {
+                            let last_12: Vec<Duration> = current_times_for_avg.iter().rev().take(12).cloned().collect();
+                            if let Some(ao12) = Self::calculate_average(&last_12) {
+                                ao12_points.push(egui_plot::PlotPoint::new(i as f64, ao12.as_millis() as f64));
+                            }
+                        }
+                    }
+    
+                    // Convert PlotPoint vectors to [f64; 2] vectors for PlotPoints
+                    let solve_coords: Vec<[f64; 2]> = solve_points.iter()
+                        .map(|point| [point.x, point.y])
+                        .collect();
+                    let ao5_coords: Vec<[f64; 2]> = ao5_points.iter()
+                        .map(|point| [point.x, point.y])
+                        .collect();
+                    let ao12_coords: Vec<[f64; 2]> = ao12_points.iter()
+                        .map(|point| [point.x, point.y])
+                        .collect();
+    
+                    let solve_line = Line::new(PlotPoints::from(solve_coords))
+                        .color(self.theme.accent_primary_color())
+                        .name("Solve Times");
+                    let ao5_line = Line::new(PlotPoints::from(ao5_coords))
+                        .color(self.theme.success_color())
+                        .name("Ao5");
+                    let ao12_line = Line::new(PlotPoints::from(ao12_coords))
+                        .color(self.theme.accent_secondary_color())
+                        .name("Ao12");
+    
+                    let plot = Plot::new("time_graph")
+                        .view_aspect(2.0)
+                        .show_axes([false, true])
+                        .legend(Legend::default())
+                        .set_margin_fraction(Vec2::new(0.05, 0.05));
+    
+                    plot.show(ui, |plot_ui| {
+                        plot_ui.line(solve_line);
+                        plot_ui.line(ao5_line);
+                        plot_ui.line(ao12_line);
                     });
-                    return;
-                }
-
-                // Prepare plot data
-                let mut solve_points: Vec<[f64; 2]> = Vec::new();
-                let mut ao5_points: Vec<[f64; 2]> = Vec::new();
-                let mut ao12_points: Vec<[f64; 2]> = Vec::new();
-
-                let mut current_times_for_avg: Vec<Duration> = Vec::new();
-                for (i, (_, record)) in current_event_records.iter().enumerate() {
-                    let solve_time_ms = record.time.as_millis() as f64;
-                    solve_points.push([i as f64, solve_time_ms]);
-
-                    current_times_for_avg.push(record.time);
-
-                    if current_times_for_avg.len() >= 5 {
-                        let last_5: Vec<Duration> = current_times_for_avg.iter().rev().take(5).cloned().collect();
-                        if let Some(ao5) = Self::calculate_average(&last_5) {
-                            ao5_points.push([i as f64, ao5.as_millis() as f64]);
-                        }
-                    }
-
-                    if current_times_for_avg.len() >= 12 {
-                        let last_12: Vec<Duration> = current_times_for_avg.iter().rev().take(12).cloned().collect();
-                        if let Some(ao12) = Self::calculate_average(&last_12) {
-                            ao12_points.push([i as f64, ao12.as_millis() as f64]);
-                        }
-                    }
-                }
-
-                let solve_line = Line::new(PlotPoints::from(solve_points))
-                    .color(self.theme.accent_primary_color())
-                    .name("Solve Times");
-                let ao5_line = Line::new(PlotPoints::from(ao5_points))
-                    .color(self.theme.success_color())
-                    .style(LineStyle::Dashed { length: 5.0 })
-                    .name("Ao5");
-                let ao12_line = Line::new(PlotPoints::from(ao12_points))
-                    .color(self.theme.accent_secondary_color())
-                    .style(LineStyle::Dashed { length: 8.0 })
-                    .name("Ao12");
-
-                let plot = Plot::new("time_graph")
-                    .view_aspect(2.0)
-                    .show_axes([false, true])
-                    .legend(Legend::default())
-                    .set_margin_fraction(Vec2::new(0.05, 0.05));
-
-                plot.show(ui, |plot_ui| {
-                    plot_ui.line(solve_line);
-                    plot_ui.line(ao5_line);
-                    plot_ui.line(ao12_line);
                 });
-            });
-
-        self.ui_state.show_statistics = show_stats;
-    }
+    
+            self.ui_state.show_statistics = show_stats;
+        }
 
     // Renders the delete confirmation popup
     fn render_delete_confirmation(&mut self, ctx: &egui::Context) {
@@ -1564,10 +1573,11 @@ impl CubeTimer {
         if !self.ui_state.show_exit_popup {
             return;
         }
-
-        let mut show_exit_popup = self.ui_state.show_exit_popup;
-        egui::Window::new("Exit Application")
-            .open(&mut show_exit_popup)
+    
+        let mut show_popup = self.ui_state.show_exit_popup;
+        
+        let response = egui::Window::new("Exit Application")
+            .open(&mut show_popup)
             .default_width(300.0)
             .resizable(false)
             .collapsible(false)
@@ -1587,6 +1597,9 @@ impl CubeTimer {
                     }
                 });
             });
+        
+        // Update the popup state after the window is shown
+        self.ui_state.show_exit_popup = show_popup;
     }
 
     // Adds a new custom event
