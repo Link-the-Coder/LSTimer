@@ -2,6 +2,9 @@
 
 A **minimal**, **accurate**, and **blazingly fast** Rubik’s Cube timer for Linux — built with Rust.
 
+# Install guide
+[Install guide](#-installation)
+
 ![Overview](screenshots/overview.png)
 
 ---
@@ -46,9 +49,9 @@ A **minimal**, **accurate**, and **blazingly fast** Rubik’s Cube timer for Lin
 
 ### Mac and linux:
 
-# Easy option: install the executable file called /LSTimer and run it
+Easy option: go to the [Releases](https://github.com/Link-the-Coder/LSTimer-Linux/releases) tab and install the executable file called LSTimer and run it
 
-# Or (more complex, only for linux):
+Or (more complex, only for linux):
 
 **⚠️ Please install packages step-by-step with your correct package manager!**
 If unsure, `apt` is likely your package manager (Debian/Ubuntu). Otherwise, search online.
@@ -69,6 +72,10 @@ sudo apt install cargo  # Debian/Ubuntu
 # Run the app in release mode
 cargo run --release
 ```
+
+### Windows
+
+Go to the [Releases](https://github.com/Link-the-Coder/LSTimer-Linux/releases) tab and install the LSTimer.exe and run it
 
 💡 **Tip:** For faster startup, run the compiled binary directly:
 
