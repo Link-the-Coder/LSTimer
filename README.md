@@ -1,6 +1,6 @@
 # **LSTimer**
 
-A **minimal**, **accurate**, and **blazingly fast** Rubik’s Cube timer — built with Rust.
+A **minimal**, and **fast** Rubik’s Cube timer — built with Rust.
 
 # Install guide
 [Install guide](#-installation)
