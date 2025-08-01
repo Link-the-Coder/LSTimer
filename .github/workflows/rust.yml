@@ -1,4 +1,4 @@
-name: Rust
+name: CI for Rust Project
 
 on:
   push:
@@ -10,13 +10,39 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  # The original job to build and test on Ubuntu.
   build:
-
     runs-on: ubuntu-latest
-
     steps:
     - uses: actions/checkout@v4
+    - name: Set up Rust toolchain
+      uses: dtolnay/rust-toolchain@stable
     - name: Build
       run: cargo build --verbose
     - name: Run tests
       run: cargo test --verbose
+
+  # A new job specifically for building a macOS binary.
+  # This job will run in parallel with the 'build' job.
+  build-macos:
+    # Use a macOS runner for this job.
+    runs-on: macos-latest
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Set up Rust toolchain
+      uses: dtolnay/rust-toolchain@stable
+
+    # Build the project for the native macOS architecture (aarch64 for Apple Silicon).
+    - name: Build project for macOS (aarch64)
+      run: cargo build --release --target aarch64-apple-darwin
+
+    # Package the resulting binary as an artifact for easy download.
+    # The path assumes your crate is named "LSTimer". Adjust if necessary.
+    - name: Upload artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: macos-release-build
+        path: target/aarch64-apple-darwin/release/LSTimer
